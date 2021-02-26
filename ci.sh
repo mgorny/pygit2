@@ -1,17 +1,25 @@
 #!/bin/sh
 
+#
+# Environment variables, examples:
+#
+# LIBSSH2_PREFIX=/usr/local - Where to find libssh2, if not already in the path
+# LIBSSH2_VERSION=1.9.0     - Build libssh2 (version 1.9.0)
+# LIBGIH2_VERSION=1.1.0     - Build libgit2 (version 1.1.0)
+#
+# Either use LIBSSH2_PREFIX, or LIBSSH2_VERSION, or none (if libssh2 is already
+# in the path, or if you don't want to use it).
+#
+
 set -x # Print every command and variable
 set -e # Exit script on any command failure
 
-echo $LIBSSH2_PREFIX
-
 # Variables
-#LIBSSH2_VERSION=${LIBSSH2_VERSION:-1.9.0}
-#LIBGIT2_VERSION=${LIBGIT2_VERSION:-1.1.0}
 PYTHON=${PYTHON:-python3}
 
 PYTHON_VERSION=$($PYTHON -c "import platform; print(f'{platform.python_implementation()}-{platform.python_version()}')")
 PREFIX="${PREFIX:-$(pwd)/ci/$PYTHON_VERSION}"
+export LDFLAGS="-Wl,-rpath,$PREFIX/lib"
 
 # Linux or macOS
 case "$(uname -s)" in
@@ -55,16 +63,13 @@ if [ -n "$LIBGIT2_VERSION" ]; then
     $LDD $PREFIX/lib/libgit2.$SOEXT
 fi
 
-# Install Python requirements
+# Install Python requirements & build inplace
 cd ..
 $PREFIX/bin/python setup.py egg_info
 $PREFIX/bin/pip install -U pip
 $PREFIX/bin/pip install -r pygit2.egg-info/requires.txt
 $PREFIX/bin/pip install -r requirements-test.txt
-
-# Build locally
 LIBGIT2=$PREFIX $PREFIX/bin/python setup.py build_ext --inplace
 
 # Tests
-export LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH
 $PREFIX/bin/pytest --cov=pygit2
