@@ -5,9 +5,13 @@ on:
 #   branches:
 #   - master
 
+env:
+  LIBGIT2_VERSION: 1.1.0
+  MACOSX_DEPLOYMENT_TARGET: "10.9"
+
 jobs:
   build:
-    name: py-${{ matrix.py.ver }} libgit2-${{ matrix.libgit2}}
+    name: py-${{ matrix.py.ver }}
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -22,15 +26,11 @@ jobs:
             release: '3.8.7'
           - ver: '3.9'
             release: '3.9.1'
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "10.9"
     steps:
-      - name: checkout pygit2
+      - name: Checkout pygit2
         uses: actions/checkout@v2
-        with:
-          path: pygit2
 
-      - name: setup python
+      - name: Setup python
         run: |
           PKG="python-${{ matrix.py.release }}-macosx10.9.pkg"
           URL="https://www.python.org/ftp/python/${{ matrix.py.release }}/$PKG"
@@ -42,68 +42,25 @@ jobs:
           python3 -VV
           test "$(python3 -V)" = "Python ${{ matrix.py.release }}"
 
-
-      - name: setup
+      - name: Build
         run: |
-          python3 -m venv venv/
-          export PATH="${{ github.workspace }}/venv/bin:$PATH"
-          echo "${{ github.workspace }}/venv/bin" >> $GITHUB_PATH
-
-      - name: checkout libgit2
-        uses: actions/checkout@v2
-        with:
-          repository: libgit2/libgit2
-          path: libgit2
-          ref: ${{ matrix.libgit2 }}
-
-      - name: build libgit2
-        id: libgit2
-        working-directory: libgit2
-        env:
-          PKG_CONFIG_PATH: /dev/null
-        run: |
-          mkdir env/
-          cmake . -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/libgit2/env -DBUILD_CLAR=OFF
-          cmake --build . --target install
-          otool -L "${{ github.workspace }}/libgit2/env/lib/libgit2.dylib"
-          VERSION=$(PKG_CONFIG_PATH=$(pwd) pkg-config --modversion libgit2)
-          echo "::set-output name=version::$VERSION"
-
-      - name: build pygit2
-        id: pygit2
-        working-directory: pygit2
-        env:
-          LIBGIT2: "${{ github.workspace }}/libgit2/env"
-          LDFLAGS: "-Wl,-rpath,'${{ github.workspace }}/libgit2/env/lib'"
-        run: |
-          which pip3
-          pip3 install wheel delocate
-          python3 setup.py bdist_wheel
+          /bin/sh build.sh wheel
+          pip3 install delocate
           delocate-listdeps dist/pygit2-*macosx*.whl
           delocate-wheel -v -w dist/fixed-wheels/ dist/pygit2-*macosx*.whl
           WHEEL=$(basename dist/fixed-wheels/*.whl)
           echo "::set-output name=wheel::$WHEEL"
           delocate-listdeps dist/fixed-wheels/$WHEEL
 
-      - name: pygit2 tests
-        working-directory: pygit2
+      - name: Tests
         run: |
           pip3 install pytest
           mv pygit2 pygit2~
           pip3 install dist/fixed-wheels/pygit2-*.whl
-          mkdir -p testresults/
-          pytest -v test/ --junitxml=testresults/testresults.xml
+          pytest
 
-
-      - name: save test results
-        uses: actions/upload-artifact@v1
-        if: always()
-        with:
-          name: "test-results-py_${{ matrix.py.ver }}-libgit2_${{ steps.libgit2.outputs.version }}"
-          path: pygit2/testresults/
-
-      - name: save wheel
+      - name: Save wheel
         uses: actions/upload-artifact@v1
         with:
-          name: "macOS-wheel-py_${{ matrix.py.ver }}-libgit2_${{ steps.libgit2.outputs.version }}"
-          path: pygit2/dist/fixed-wheels/
+          name: "macOS-wheel-py_${{ matrix.py.ver }}-libgit2_${{ env.LIBGIT2_VERSION }}"
+          path: dist/fixed-wheels/
